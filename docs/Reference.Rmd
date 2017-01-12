@@ -1,0 +1,229 @@
+---
+title: "EPIC model reference"
+author: "Mohsen Sadatsafavi"
+date: "Saturday, August 13, 2016"
+output: 
+  pdf_document: #was word_document. Changed to pdf on 2015-10-07 by Amin 
+    toc: yes
+---
+
+# This document is automatically generated using a markdown tool. It is a work in progress.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+
+
+```{r echo=FALSE}
+library(knitr)
+library(sqldf)
+#source("/Users/Amin/Dropbox/UBC/CORE/EPIC/code/WIP/code/core.R") #added, was missing. Amin
+#source("/Users/Amin/Dropbox/UBC/CORE/EPIC/code/WIP/code/validation.R") #added, was missing. Amin
+source("C:\\Users\\maadibi\\Dropbox\\UBC\\CORE\\Epic\\code\\WIP\\code\\core.R") #added, was missing. Amin
+source("C:\\Users\\maadibi\\Dropbox\\UBC\\CORE\\Epic\\code\\WIP\\code\\validation.R")
+report_mode<<-1
+table_index<-1
+figure_index<-1
+init_session()
+```
+
+
+Welcome to EPIC! EPIC is a microsimulation model of COPD to inform research, practice, and policy.
+This document contains details of model structure and results of model validation and calibration.
+
+#BACKGROUND
+EPIC is a 'Whole Disease Model' of COPD from its pre-clinical stages to advanced disease and death. The promise of EPIC is to enable evaluation of clinical or policy decisions at any level of care in the context of COPD.
+The purpose of EPIC is to enable the evaluation of many different decisions potentially in interaction with each other, at different levels of care. Examples of decisions include policies that would change the future rate of smoking, implementation of biomarkers for the diagnosis of COPD or its acute exacerbations, the use of different medications for management of patients with COPD, strategies towards reducing the rate of readmissions to hospital, and end of life care. The breadth of the decision set means EPIC needs to model the entire pathway of COPD progression (including its incidence).
+
+#Structure of EPIC
+EPIC is a Discrete Event Simulation (DES) model. It simulates the progression of individuals one at a time, by moving time continuously forward until the individual dies or the time horizon of the analysis is finished. 
+The structure of EPIC is organized in modules as follows
+-	Demographic module: models the creation of simulated individuals and their characteristics
+-	Smoking module: models the smoking behavior as an important risk factor for COPD
+-	COPD module: models the occurrence of COPD in non-COPD population
+-	Lung function module: models the progression of COPD once it develops
+-	Payoff module: assign costs and quality of life weights to other components of the model and calculates the overall costs and quality-adjusted life years.
+
+##Global parameters
+Global parameters control the overall setting of the analysis. They include baseline (minimum age), time horizon of the analysis, and discount values. By default, EPIC models individuals 40 years or older and evaluates the outcomes from 2015 to 2034 (time horizon of 20 years).
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": Global parameters"))
+ kable(tabulate_input(model_input$global_parameters,model_input_help$global_parameters))
+ table_index=table_index+1
+```
+
+
+## Demographic module
+This module is responsible for the creation, aging, and death (due to causes other than COPD) of patients. EPIC is an open (dynamic) prevalent-incident population of individuals 40 years or older at year 2015 and onwards. That is, the entire Canadian population 40 years or older in year 2015 (prevalent cohort) is generated; as well, individuals who reach age 40 during the time horizon (e.g., 2015-2034) are also created (incident cohort). Variables currently include sex, age at creation, current age, weight and height, smoking status, and pack-years. 
+
+Relative prevalence of individuals by age in 2015 is taken from Statistics Canada (CanSIM Table 052.0005). All projections are taken from the main (M1) scenario for the year 2015. The resulting prevalent cohort will consist of individuals representing the Canadian population (40 years of age or older) in year 2015. 
+Relative incidence of individuals by age during the time horizon decides the age of each newly created individual. Individuals who are born in Canada or immigrated into the country before age 40 will show up in the model upon the time they reach age 40. The model also accommodates arrival of older immigrants. 
+
+Please refer to the model validation/calibration section to evaluate the performance of this module.
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": parameters of the demographic module"))
+ kable(tabulate_input(model_input$agent,model_input_help$agent))
+ table_index=table_index+1
+```
+
+
+## Smoking module
+The smoking module is responsible for modeling the smoking behaviour in individuals. Note that the smoking history at baseline (pack-years) is handled in the demographic module.
+
+The events associated with smoking are handled through smoking_change event in the model. At the time a patient is created, pack-year and smoking status are modeled through regression equations based on CCHS and CanCOLD data. During their lifetime, patients can initiate smoking for the first time, quick smoking, or experience smoking relapse. The log-hazard of these events are modeled as regression equations relating the hazard to patient demographics.
+
+In baseline, the model is calibrated to generate declining smoking patterns from 2015 onwards which is the continuation of ~4% annual decline observed in the past decades.
+
+Please refer to the model validation/calibration section to evaluate the performance of this module.
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": parameters of the smoking module"))
+ kable(tabulate_input(model_input$smoking,model_input_help$smoking))
+ table_index=table_index+1
+```
+
+
+## COPD module
+This module is responsible for simulating prevalent and incident COPD. 
+
+Note that EPIC does not model lung function (e.g., FEV1) in individuals without COPD. Instead, the development of COPD is modeled as a binary status. The definition of COPD is that of the GOLD criteria (FEV1/FVC<0.7).
+
+The core equations are prevalence equations and incidence equations. The former decides whether individuals have COPD at the time of creation. The latter determines if, and at what time, an individual without COPD at baseline develops COPD.
+
+
+Prevalent COPD: The best source of evidence currently seems to be the BOLD study. This international study recruited XXX individuals from Vancouver, Canada, and reported a prevalence of X% in men and X% in women. Importantly, this study reported the odds ratio (OR) of COPD over decades of age and pack-years of smoking. This provided us with all the quantities needed to formulate the logit of the probability of having COPD as a function of individual characteristics and an intercept factor.
+
+Incident COPD: There is much less information published on the incidence of COPD. This is natural given that the moment a person satisfies the definition of COPD based on spirometric criteria is no a catastrophic one (like myocardial infarction) in the life of the COPD patient. 
+EPIC models COPD incidence on the basis of the core assumption that within the strata of COPD risk factor, COPD incidence is such that it keeps COPD prevalence constant over time (a concept embedded in the SIR epidemiological models). This means we could, through calibration, formulate a regression coefficient for the log-hazard of COPD as a function of patient characteristics that results in stationary prevalence across risk factor strata. The fix prevalence was tested by running the model for a large number of patients, extracting the data, and estimating a logit model for COPD prevalence. The calibration was deemed successful if a) the regression coefficients matched those seen in BOLD, and b) the coefficient for calendar time was close to zero.
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": parameters of the COPD module"))
+ kable(tabulate_input(model_input$COPD,model_input_help$COPD))
+ table_index=table_index+1
+```
+
+## Lung Function (disease progression) module
+EPIC models FEV1 as the core variable representing the natural history of COPD. FEV1 is only modeled when the individual develops COPD. 
+Modeling FEV1 is done in two stages: modeling baseline FEV1 at the time individuals are created, and modeling their progression over time.
+
+###Lung function at creation time
+We rely on the patient-level data of the nationally representative COLD and the Canadian Cohort of Obstructive Lung Disease (CanCOLD) studies. Both studies are population-based with multi-stage sampling to ensure representativeness. Because FEV1 is only modeled among those with COPD, we needed to estimate its distribution with respect to patient characteristics conditional on FEV1/FVC<0.7. In order to do so, we ran an OLS on COLD data for individuals with FEv1/FVC<0.7. For the incident COPD, we need to construct a probability distribution of FEV1 condition on FEV1/FVC=0.7. Again, we used COLD data, this time including all individuals. The OLS model also had as an independent variable x=FEV1/FVC. We predict the distribution of FEV1 by setting x=0.7.
+
+###Lung function decline over time
+Lung function decline is modeled based on our published work using data from the Lung Health Study. In brief, we fitted a random-intercept, random-slope model for baseline and future FEv1. Conditional estimates of slope of FEV1 decline as a function of patient characteristics and baseline FEV1 (estimates as explained above).
+
+###GOLD severity grades
+Much of the information on COPD outcomes (e.g., costs, quality of life, mortality rates) is available according to the GOLD severity grades which are based on FEV1 to its predicted ratio. EPIC quantifies GOLD grades based on the modeled FEV1 combined with predicted FEV1s estimated based on age, sex, and height in the Canadian population (Tan et. al.)
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": parameters of the lung function module"))
+ kable(tabulate_input(model_input$lung_function,model_input_help$lung_function))
+ table_index=table_index+1
+```
+
+##Exacerbation module
+Exacerbations are identified by their time of onset, duration, and severity. Currently, EPIC models three levels of severity (mild, moderate, severe). There is heterogeneity with regard to exacerbations in two ways: individuals vary in their background rate of exacerbation (over and above the variation explained by observable characteristics), and in their tendency to experience more severe versus milder exacerbations. Parameters related to rate and severity have been largely estimated from the dedicated analysis of MACRO clinical trial.
+
+The rate of exacerbation is modeled as a Poisson process (assumption of constant hazard was supported by our analysis of MACRO data). The log-hazard of exacerbation is a function of patient characteristics (sex, age, FEV1) and an individual-specific random-effect term. Similarly, the log-odds of more severe compared with less severe exacerbation is a function of patient characteristics (in a ordinal logit model) and a random-effect term that models between-individual variability in the severity of exacerbation.
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": parameters of the exacerbation module"))
+ kable(tabulate_input(model_input$exacerbation,model_input_help$exacerbation))
+ table_index=table_index+1
+```
+
+##Cost and health state utility values (payoffs)
+The payoff module attaches costs and utility values (the latter is used to calculate quality-adjusted life year [QALY]) to the events occurring in the model. 
+Currently, costs are associated with the following state/events:
+- Background costs in the general non-COPD population
+- Background costs of each GOLD grade (not including exacerbations)
+- Costs associated with exacerbations according to their severity
+
+Similarly, utilities are associated with background 
+- Background utilities in the general non-COPD population
+- Background disutility of each GOLD grade (not including exacerbations)
+- loss of QALY (referred to as disutility in the model) associated with exacerbations according to their severity
+
+
+```{r echo=FALSE}
+ cat(paste("Table",table_index,": parameters of the payoff module (costs)"))
+ kable(tabulate_input(model_input$cost,model_input_help$cost))
+ table_index=table_index+1
+ cat(paste("Table",table_index,": parameters of the payoff module (utility)"))
+ kable(tabulate_input(model_input$utility,model_input_help$utility))
+ table_index=table_index+1
+```
+
+
+# Model validation results
+The output of several model validation routines is provided below. 
+
+## Sanity checks (see if all tests have passed)
+```{r, echo=FALSE}
+sanity_check()
+```
+
+
+## Validating  population module and mortality 
+```{r, echo=FALSE}
+res<-validate_population()
+res<-validate_mortality()
+```
+
+
+## Validating the smoking module
+```{r, echo=FALSE}
+res<-validate_smoking()
+```
+
+
+## Validating of COPD module
+```{r, echo=FALSE}
+validate_COPD()
+```
+
+## Validating of lung function module
+```{r, echo=FALSE}
+res<-validate_lung_function()
+
+cat(paste("Table",table_index,": FEV1 for the prevalent population"))
+kable(res$FEV1_prev)
+table_index=table_index+1
+
+cat(paste("Table",table_index,": FEV1 for the incident population"))
+kable(res$FEV1_inc)
+table_index=table_index+1
+
+cat(paste("Table",table_index,": GOLD grades for the prevalent population"))
+kable(res$gold_prev)
+table_index=table_index+1
+
+cat(paste("Table",table_index,": GOLD grades for the incident population"))
+kable(res$gold_inc)
+table_index=table_index+1
+```
+
+
+
+# Model outputs
+
+## Predicted COPD incidence and prevalence
+```{r, echo=FALSE}
+source("/Users/Amin/Dropbox/UBC/CORE/EPIC/code/WIP/code/report.R") #added by Amin for debug.
+report_COPD_by_ctime()
+```
+
+
+
+#Conclusions
+
+The EPIC seems to perform well on many dimensions. More work is required to calbrate the model on mortality as currently the mortality rates for older groups is below the life table values in Canada. 
+
+The following items are on the agenda for the development team:
+  1. Setting new validation targets for model output.
+  2. Addition of comorbidity to the model
+  
