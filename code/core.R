@@ -1,5 +1,5 @@
 rm(list = ls()) #cleaning the environment. Amin.
-setwd(dirname(parent.frame(2)$ofile)) #automating working directory. Amin. Just testing there must be change. 
+setwd(dirname(parent.frame(2)$ofile)) #automating working directory. Amin. testing a working branch 
 master_path<-"../"; #the path to the directory where all the folders reside. Amin 
 data_path<-paste(master_path,"/data",sep="")
 source(paste(master_path,"/code/input.r",sep=""))
