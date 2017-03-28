@@ -35,9 +35,6 @@ Layout:
 
 
 
-#define PROJECT_ROC16       //Hypothetical prognostic biomarker of exacerbation
-
-
 #define MAX_AGE 111
 
 
@@ -531,7 +528,7 @@ struct input
 
   struct
   {
-    double ln_rate_betas[5];     //intercept sex age fev1 smoking status
+    double ln_rate_betas[7];     //intercept sex age fev1 smoking status
     double logit_severity_betas[6];     //intercept1, intercept2, sex age fev1 smoking_status
     double ln_rate_intercept_sd;
     double logit_severity_intercept_sd;       //sd of the intercept (random-effects)
@@ -592,16 +589,11 @@ struct input
     
     double logit_p_hf_betas_by_sex[12][2];
     double ln_h_hf_betas_by_sex[12][2];
-    double p_hf_x;
+    double p_hf_death;
   } comorbidity;
   
   struct
   {
-    double ROC16_biomarker_noise_sd;
-    double ROC16_biomarker_threshold;
-    double ROC16_treatment_RR;
-    double ROC16_biomarker_cost;
-    double ROC16_treatment_cost;
   } project_specific;
   
   
@@ -705,13 +697,7 @@ List Cget_inputs()
       )
       ,
     Rcpp::Named("project_specific")=Rcpp::List::create(
-#ifdef PROJECT_ROC16
-      Rcpp::Named("ROC16_biomarker_noise_sd")=input.project_specific.ROC16_biomarker_noise_sd,
-      Rcpp::Named("ROC16_biomarker_threshold")=input.project_specific.ROC16_biomarker_threshold,
-      Rcpp::Named("ROC16_treatment_RR")=input.project_specific.ROC16_treatment_RR,
-      Rcpp::Named("ROC16_biomarker_cost")=input.project_specific.ROC16_biomarker_cost,
-      Rcpp::Named("ROC16_treatment_cost")=input.project_specific.ROC16_treatment_cost
-#endif
+      //Put your project-specific outputs here;
       )
     );
     
@@ -799,14 +785,9 @@ int Cset_input_var(std::string name,NumericVector value)
   if(name=="comorbidity$p_stroke_death") {input.comorbidity.p_stroke_death=value[0]; return(0);}
   if(name=="comorbidity$logit_p_hf_betas_by_sex") READ_R_MATRIX(value,input.comorbidity.logit_p_hf_betas_by_sex);
   if(name=="comorbidity$ln_h_hf_betas_by_sex") READ_R_MATRIX(value,input.comorbidity.ln_h_hf_betas_by_sex);
-  
-#ifdef PROJECT_ROC16
-  if(name=="project_specific$ROC16_biomarker_noise_sd") {input.project_specific.ROC16_biomarker_noise_sd=value[0]; return(0);}
-  if(name=="project_specific$ROC16_biomarker_threshold") {input.project_specific.ROC16_biomarker_threshold=value[0]; return(0);}
-  if(name=="project_specific$ROC16_treatment_RR") {input.project_specific.ROC16_treatment_RR=value[0]; return(0);}
-  if(name=="project_specific$ROC16_biomarker_cost") {input.project_specific.ROC16_biomarker_cost=value[0]; return(0);}
-  if(name=="project_specific$ROC16_treatment_cost") {input.project_specific.ROC16_treatment_cost=value[0]; return(0);}
-#endif
+
+  //Define your project-specific inputs here;
+    
   return(ERR_INCORRECT_INPUT_VAR);
 }
 
@@ -892,12 +873,7 @@ struct agent
   
   double p_COPD;  //Not used in the model; here to facilitate calibration on incidence;
   
-#ifdef PROJECT_ROC16
-  double ROC16_exac_rate;
-  double ROC16_treatment_status;
-  double ROC16_biomarker;
-#endif
-  
+  //Define your project-specific variables here;
 };
 
 
@@ -1248,11 +1224,6 @@ agent *create_agent(agent *ag,int id)
   (*ag).cumul_qaly=0;
   (*ag).payoffs_LPT=0;
 
-#ifdef PROJECT_ROC16
-  (*ag).ROC16_treatment_status=0;
-  (*ag).ROC16_biomarker=-1;
-#endif
-  
   return(ag);
 }
 
@@ -1298,10 +1269,6 @@ struct output
    
   double total_cost;    //END because agent records
   double total_qaly;  //END because agent records
-#ifdef PROJECT_ROC16
-  int n_eligible;
-  int n_treated;
-#endif
 } output;
 
 
@@ -1319,10 +1286,6 @@ void reset_output()
   output.total_doctor_visit[0]=0;output.total_doctor_visit[1]=0;
   output.total_cost=0;
   output.total_qaly=0;
-#ifdef PROJECT_ROC16
-  output.n_eligible=0;
-  output.n_treated=0;
-#endif
 }
 
 
@@ -1340,11 +1303,7 @@ List Cget_output()
       Rcpp::Named("total_doctor_visit")=AS_VECTOR_INT(output.total_doctor_visit),
       Rcpp::Named("total_cost")=output.total_cost,
       Rcpp::Named("total_qaly")=output.total_qaly
-#ifdef PROJECT_ROC16
-      ,
-      Rcpp::Named("n_eligible")=output.n_eligible,
-      Rcpp::Named("n_treated")=output.n_treated
-#endif
+  //Define your project-specific output here;
     );
 }
 
@@ -1893,7 +1852,6 @@ DataFrame Cget_all_events() //Returns all events from all agents;
 
 
 
-
 // [[Rcpp::export]]
 NumericMatrix Cget_all_events_matrix()
 {
@@ -1913,8 +1871,6 @@ NumericMatrix Cget_all_events_matrix()
     outm(i,8)=(*ag).fev1;
     outm(i,9)=(*ag)._pred_fev1;
     outm(i,10)=(*ag).smoking_status;
-    outm(i,11)=(*ag).ROC16_exac_rate;
-    outm(i,12)=(*ag).ROC16_biomarker;
   }
   return(outm);
 }
@@ -2050,14 +2006,11 @@ double event_exacerbation_tte(agent *ag)
                 +input.exacerbation.ln_rate_betas[2]*((*ag).age_at_creation+(*ag).local_time)
                 +input.exacerbation.ln_rate_betas[3]*(*ag).fev1
                 +input.exacerbation.ln_rate_betas[4]*(*ag).smoking_status
+                +input.exacerbation.ln_rate_betas[5]*((*ag).gold==2)
+                +input.exacerbation.ln_rate_betas[6]*((*ag).gold>=3)
                 );
   
-#ifdef PROJECT_ROC16
-  (*ag).ROC16_exac_rate=rate;
-  if((*ag).ROC16_treatment_status==1)
-    rate=rate*input.project_specific.ROC16_treatment_RR;
-#endif
-  
+
   if((*ag).medication_status>0)
   {
      for(int i=0;i<N_MED_CLASS;i++)
@@ -2145,23 +2098,6 @@ void event_exacerbation_end_process(agent *ag)
   (*ag).cumul_cost+=input.cost.exac_dcost[(*ag).exac_status-1]/(1+pow(input.global_parameters.discount_cost,(*ag).time_at_creation+(*ag).local_time));
   (*ag).cumul_qaly+=input.utility.exac_dutil[(*ag).exac_status-1]/(1+pow(input.global_parameters.discount_qaly,(*ag).time_at_creation+(*ag).local_time));
   (*ag).exac_status=0;
-  
-#ifdef PROJECT_ROC16
-  //See if this is the first moderate or severe exac
-  if((*ag).cumul_exac[1]+(*ag).cumul_exac[2]==1)
-  {
-    output.n_eligible++;
-    //apply the biomarker(*ag).cumul_exac
-    double biomarker=(*ag).ROC16_exac_rate*exp(rand_norm()*input.project_specific.ROC16_biomarker_noise_sd);
-    (*ag).ROC16_biomarker=biomarker;
-    output.total_cost+=input.project_specific.ROC16_biomarker_cost/pow(1+input.global_parameters.discount_cost,(*ag).local_time+(*ag).time_at_creation);
-    if(biomarker>input.project_specific.ROC16_biomarker_threshold)
-    {
-      (*ag).ROC16_treatment_status=1;
-      output.n_treated++;
-    }
-  }
-#endif
 }
 
 
@@ -2499,11 +2435,6 @@ agent *event_fixed_process(agent *ag)
               ;            
   
   (*ag).p_COPD=COPD_odds/(1+COPD_odds);
-  
-#ifdef PROJECT_ROC16
-  if((*ag).ROC16_treatment_status==1)
-    output.total_cost+=input.project_specific.ROC16_treatment_cost/pow(1+input.global_parameters.discount_cost,(*ag).time_at_creation+(*ag).local_time);
-#endif
   
   return(ag);
 }
@@ -2908,7 +2839,7 @@ int Cmodel(int max_n_agents)
     if(output.n_agents>settings.n_base_agents)  //now we are done with prevalent cases and are creating incident cases;
     {
       double incidence=exp(input.agent.l_inc_betas[0]+input.agent.l_inc_betas[1]*calendar_time+input.agent.l_inc_betas[2]*calendar_time*calendar_time);
-      if(incidence<0.000000000000001) calendar_time=input.global_parameters.time_horizon; else  calendar_time=calendar_time+1/incidence/settings.n_base_agents;
+      if(incidence<0.000000000000001) calendar_time=input.global_parameters.time_horizon; else calendar_time=calendar_time+1/(incidence*settings.n_base_agents);
     }
     last_id++;
   }//Outer while (between-agent)
